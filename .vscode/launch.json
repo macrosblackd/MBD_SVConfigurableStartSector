@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Star Valor with Mod",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "D:\\Steam\\steamapps\\common\\Star Valor\\Star Valor.exe",
+            "args": [],
+            "cwd": "D:\\Steam\\steamapps\\common\\Star Valor",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "internalConsoleOptions": "openOnSessionStart"
+        },
+        {
+            "name": "Launch Star Valor with Mod (Release)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-release",
+            "program": "D:\\Steam\\steamapps\\common\\Star Valor\\Star Valor.exe",
+            "args": [],
+            "cwd": "D:\\Steam\\steamapps\\common\\Star Valor",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "internalConsoleOptions": "openOnSessionStart"
+        },
+        {
+            "name": "Attach to Star Valor",
+            "type": "coreclr",
+            "request": "attach",
+            "processName": "Star Valor"
+        }
+    ]
+} 

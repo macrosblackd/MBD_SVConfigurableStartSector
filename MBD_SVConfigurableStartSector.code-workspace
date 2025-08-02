@@ -1,0 +1,57 @@
+{
+    "folders": [
+        {
+            "path": "."
+        },
+        {
+            "path": "../StarValorAssembly"
+        }
+    ],
+    "settings": {
+        "dotnet.defaultSolution": "MBD_SVConfigurableStartSector.sln",
+        "files.exclude": {
+            "**/bin": true,
+            "**/obj": true
+        },
+        "search.exclude": {
+            "**/bin": true,
+            "**/obj": true
+        }
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "build",
+                "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+                "type": "process",
+                "args": [
+                    "${workspaceFolder}/MBD_SVConfigurableStartSector.sln",
+                    "/p:Configuration=Debug",
+                    "/p:Platform=Any CPU",
+                    "/verbosity:minimal"
+                ],
+                "group": {
+                    "kind": "build",
+                    "isDefault": true
+                },
+                "presentation": {
+                    "echo": true,
+                    "reveal": "silent",
+                    "focus": false,
+                    "panel": "shared",
+                    "showReuseMessage": true,
+                    "clear": false
+                },
+                "problemMatcher": "$msCompile"
+            }
+        ]
+    },
+    "keybindings": [
+        {
+            "key": "ctrl+shift+b",
+            "command": "workbench.action.tasks.runTask",
+            "args": "build"
+        }
+    ]
+} 

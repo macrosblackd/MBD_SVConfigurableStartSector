@@ -1,0 +1,135 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "type": "process",
+            "args": [
+                "${workspaceFolder}/MBD_SVConfigurableStartSector.sln",
+                "/p:Configuration=Debug",
+                "/p:Platform=Any CPU",
+                "/verbosity:minimal"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Build the project in Debug configuration using MSBuild"
+        },
+        {
+            "label": "build-release",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "type": "process",
+            "args": [
+                "${workspaceFolder}/MBD_SVConfigurableStartSector.sln",
+                "/p:Configuration=Release",
+                "/p:Platform=Any CPU",
+                "/verbosity:minimal"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Build the project in Release configuration using MSBuild"
+        },
+        {
+            "label": "clean",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "type": "process",
+            "args": [
+                "${workspaceFolder}/MBD_SVConfigurableStartSector.sln",
+                "/t:Clean"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Clean the project using MSBuild"
+        },
+        {
+            "label": "rebuild",
+            "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\MSBuild.exe",
+            "type": "process",
+            "args": [
+                "${workspaceFolder}/MBD_SVConfigurableStartSector.sln",
+                "/t:Rebuild",
+                "/p:Configuration=Debug",
+                "/p:Platform=Any CPU",
+                "/verbosity:minimal"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Clean and rebuild the project using MSBuild"
+        },
+        {
+            "label": "build-from-parent",
+            "command": "powershell",
+            "type": "process",
+            "args": [
+                "-Command",
+                "cd 'D:\\SVModding'; .\\build-current-project.ps1 -FilePath '${workspaceFolder}\\ConfigurableStartSector.cs' -Configuration Debug"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Build using the parent workspace build system"
+        },
+        {
+            "label": "build-release-from-parent",
+            "command": "powershell",
+            "type": "process",
+            "args": [
+                "-Command",
+                "cd 'D:\\SVModding'; .\\build-current-project.ps1 -FilePath '${workspaceFolder}\\ConfigurableStartSector.cs' -Configuration Release"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Build Release using the parent workspace build system"
+        }
+    ]
+} 
