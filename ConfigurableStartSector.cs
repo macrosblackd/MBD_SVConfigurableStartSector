@@ -1,158 +1,559 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
 using BepInEx;
-using BepInEx.Configuration;
 using BepInEx.Logging;
+using UnityEngine;
+using BepInEx.Configuration;
 using HarmonyLib;
 
 namespace MBD_SVConfigurableStartSector
 {
-    internal enum SectorType
+    public enum SectorType
     {
         Normal = 0,
         Nebula = 1,
-        PitchBlack = 2,
-        AsteroidRush = 3
+        PitchBlack = 3,
+        AsteroidRush = 2
     }
 
-    internal enum SectorSize
+    public enum SectorSize
     {
         VerySmall = 1,
-        Small = 2,
         Medium = 3,
+        Small = 2,
         Large = 4
     }
 
-    internal enum SectorBigAsteroidDensity
+    public enum MineralRichness
     {
-        None = -1, // No big asteroids
-        Random = 0, // Random density
-        VeryDense = 1 // Very dense big asteroids
+        VeryPoor = 0,
+        Poor = 1,
+        Medium = 2,
+        Rich = 3,
+        VeryRich = 4
+    }
+
+    public enum BigAsteroidMode
+    {
+        None = 0,
+        VanillaRandom = 1,
+        VeryDense = 2,
+        Maximum = 3
+    }
+
+    public enum SunColorPreset
+    {
+        Vanilla = 0,
+        White = 1,
+        WarmYellow = 2,
+        Orange = 3,
+        Red = 4,
+        BlueWhite = 5,
+        Blue = 6,
+        Purple = 7,
+        Green = 8
+    }
+
+    public enum SolarOutputPreset
+    {
+        None = 0,
+        VeryLow = 30,
+        Low = 45,
+        Medium = 60,
+        High = 75,
+        VeryHigh = 90,
+        ExtremelyHigh = 100
+    }
+
+    public enum StartingSectorPopulation
+    {
+        Empty = 0,
+        Sparse = 25,
+        Normal = 50,
+        Busy = 75,
+        Crowded = 100
     }
 
     [BepInPlugin(pluginGuid, pluginName, pluginVersion)]
     public class ConfigurableStartSector : BaseUnityPlugin
     {
-        private const string pluginGuid = "macrosblackd.starvalormods.configurablestartsector";
-        private const string pluginName = "Configurable Start Sector";
-        private const string pluginVersion = "1.1.0";
+        public const string pluginGuid = "starvalormods.configurablestartsector";
+        public const string pluginName = "Configurable Start Sector";
+        public const string pluginVersion = "2.9.0";
 
-        private static readonly ManualLogSource logger = BepInEx.Logging.Logger.CreateLogSource(pluginName);
+        internal static ConfigEntry<SectorSize> startSectorSize;
+        internal static ConfigEntry<MineralRichness> mineralRichness;
+        internal static ConfigEntry<BigAsteroidMode> bigAsteroidMode;
+        internal static ConfigEntry<SectorType> startSectorType;
+        internal static ConfigEntry<bool> pluginEnabled;
+        internal static ConfigEntry<bool> spawnTinheadWorkshop;
 
-        private static ConfigEntry<SectorSize> startSectorSize;
-        private static ConfigEntry<float> startSectorRichness;
-        private static ConfigEntry<SectorBigAsteroidDensity> startSectorBigAsteroidDensity;
-        private static ConfigEntry<SectorType> startSectorType;
-        private static ConfigEntry<bool> pluginEnabled;
-        private static ConfigEntry<bool> spawnMaxBigAsteroids;
-        private static ConfigEntry<bool> spawnTinheadWorkshop;
-        // TODO: Add a configurable option to remove all AI stations from the start sector.
-        // TODO: Add a configurable option to remove all jumpgates from the start sector.
-        // TODO: Add a configurable option to spawn a Rebel base in the start sector.
-        // TODO: add a configurable option to spawn a Venghi base in the start sector.
+        internal static ConfigEntry<bool> overrideSolarOutput;
+        internal static ConfigEntry<SolarOutputPreset> startSectorSolarOutput;
 
-        // TODO: Add a configurable option to spawn more debris fields in the start sector.
-        // TODO: Add a configurable option to spawn more asteroid fields in the start sector.
-        // TODO: Add a configurable option to enable more or periodic SOS events in the start sector.
-        // TODO: Add a configurable option to spawn hidden debris fields in the start sector.
-        // TODO: Add a configurable option to spawn extra big asteroids (above the max) in the start sector.
-        // TODO: Add a configurable option to force all hideouts to be on a big asteroid in the start sector.
+        internal static ConfigEntry<bool> overrideSunSize;
+        internal static ConfigEntry<float> startSectorSunSize;
+        internal static ConfigEntry<SunColorPreset> sunColorPreset;
+        internal static ConfigEntry<StartingSectorPopulation> startingSectorPopulation;
 
-        public void Awake()
+        internal static ManualLogSource Log;
+        private static Dictionary<int, float> originalSunSizeBySector = new Dictionary<int, float>();
+        private static bool warnedSunColor;
+        private static bool warnedSunSize;
+        private static bool snappingSunSize;
+
+        private void Awake()
         {
-            // This method is called when the plugin is loaded
+            Log = Logger;
             LoadConfig();
-            Harmony.CreateAndPatchAll(typeof(ConfigurableStartSector));
-            logger.LogInfo("ConfigurableStartSector plugin loaded successfully!");
+
+            startSectorSunSize.SettingChanged += OnSunSizeSettingChanged;
+            SnapSunSizeConfigValue();
+
+            // Match the proven v3.1 architecture: patch only this plugin class.
+            Harmony.CreateAndPatchAll(typeof(ConfigurableStartSector), null);
+
+            Logger.LogInfo("ConfigurableStartSector plugin loaded successfully!");
+        }
+
+        private void OnSunSizeSettingChanged(object sender, EventArgs e)
+        {
+            SnapSunSizeConfigValue();
+        }
+
+        private void SnapSunSizeConfigValue()
+        {
+            if (snappingSunSize || startSectorSunSize == null)
+                return;
+
+            float snapped = RoundToHundredth(startSectorSunSize.Value);
+
+            if (snapped < 0.10f)
+                snapped = 0.10f;
+            else if (snapped > 1.50f)
+                snapped = 1.50f;
+
+            if (Math.Abs(startSectorSunSize.Value - snapped) < 0.0001f)
+                return;
+
+            try
+            {
+                snappingSunSize = true;
+                startSectorSunSize.Value = snapped;
+            }
+            finally
+            {
+                snappingSunSize = false;
+            }
         }
 
         private void LoadConfig()
         {
-            startSectorSize = Config.Bind("Settings", "StartSectorSize", SectorSize.VerySmall, new ConfigDescription(
-                "Size of the start sector (VerySmall (default), Small, Medium, Large)"));
-            startSectorRichness = Config.Bind("Settings", "StartSectorRichness", 0.2f, new ConfigDescription(
-                "Richness of the start sector (0.0 to 1.0, where 1.0 is very rich. Default value is 0.2f)", new AcceptableValueRange<float>(0.0f, 1.0f)));
-            startSectorBigAsteroidDensity = Config.Bind("Settings", "StartSectorBigAsteroidDensity", SectorBigAsteroidDensity.Random,
-                "Density of big asteroids in the start sector (None, Random (default), VeryDense)");
-            startSectorType = Config.Bind("Settings", "StartSectorType", SectorType.Normal,
-                "Type of the start sector (Normal, Nebula, AsteroidRush, PitchBlack)");
-            pluginEnabled = Config.Bind("Settings", "PluginEnabled", true,
-                                "Enable or disable the Configurable Start Sector plugin");
-
-            spawnMaxBigAsteroids = Config.Bind("Settings.Spawns", "SpawnMaxBigAsteroids", false,
-                                "When enabled, forces maximum big asteroid spawns in the start sector");
-            spawnTinheadWorkshop = Config.Bind("Settings.Spawns", "SpawnTinheadWorkshop", false, new ConfigDescription(
+            pluginEnabled = Config.Bind(
+                "General",
+                "PluginEnabled",
+                true,
+                "Enable or disable the Configurable Start Sector plugin"
+            );
+            startSectorSize = Config.Bind(
+                "Settings",
+                "StartSectorSize",
+                SectorSize.VerySmall,
+                "Size of the start sector (VerySmall (default), Medium, Small, Large)"
+            );
+            mineralRichness = Config.Bind(
+                "Settings",
+                "MineralRichness",
+                MineralRichness.VeryPoor,
+                "Mineral richness of the start sector (VeryPoor=0.20, Poor=0.35, Medium=0.50, Rich=0.70, VeryRich=1.00)"
+            );
+            bigAsteroidMode = Config.Bind(
+                "Settings",
+                "BigAsteroidMode",
+                BigAsteroidMode.VanillaRandom,
+                "Big asteroid mode for the start sector (None, VanillaRandom (default), VeryDense, Maximum). Maximum uses the proven max-count override."
+            );
+            startSectorType = Config.Bind(
+                "Settings",
+                "StartSectorType",
+                SectorType.Normal,
+                "Type of the start sector (Normal, Nebula, AsteroidRush, PitchBlack)"
+            );
+            spawnTinheadWorkshop = Config.Bind(
+                "Settings.Spawns",
+                "SpawnTinheadWorkshop",
+                false,
                 "When enabled, will force the start sector to spawn with a Tinhead Workshop, otherwise it will be left to RNG."
-                ));
+            );
+            overrideSolarOutput = Config.Bind(
+                "Solar Output",
+                "OverrideSolarOutput",
+                false,
+                "When enabled, overrides gameplay solar output in the starting sector only. Pitch Black is always locked to 0."
+            );
+            startSectorSolarOutput = Config.Bind(
+                "Solar Output",
+                "StartSectorSolarOutput",
+                SolarOutputPreset.Medium,
+                "Starting-sector gameplay solar output preset: None=0%, Very Low=30%, Low=45%, Medium=60%, High=75%, Very High=90%, Extremely High=100%."
+            );
+            overrideSunSize = Config.Bind(
+                "Sun Visuals",
+                "OverrideSunSize",
+                false,
+                "Override the visual size of the starting-sector sun. Gameplay Solar Output is preserved separately."
+            );
+            startSectorSunSize = Config.Bind(
+                "Sun Visuals",
+                "SunSize",
+                1.0f,
+                new ConfigDescription(
+                    "Visual sun size. User-tested safe range is 0.10 to 1.50. Config values snap to the nearest 0.01.",
+                    new AcceptableValueRange<float>(0.10f, 1.50f)
+                )
+            );
+            sunColorPreset = Config.Bind(
+                "Sun Visuals",
+                "SunColor",
+                SunColorPreset.Vanilla,
+                "Visual sun color preset for the starting sector. Vanilla leaves the generated color unchanged."
+            );
+            startingSectorPopulation = Config.Bind(
+                "Settings",
+                "StartingSectorPopulation",
+                StartingSectorPopulation.Normal,
+                "Starting-sector population only: Empty=0, Sparse=25, Normal=50, Busy=75, Crowded=100. Native ship density responds automatically."
+            );
         }
 
-        [HarmonyPatch(typeof(TSector), nameof(TSector.GenerateSectorData))]
+        private static float RoundToHundredth(float value)
+        {
+            return (float)(Math.Round(value * 100.0) / 100.0);
+        }
+
+        private static object GetMemberValue(object obj, string name)
+        {
+            if (obj == null)
+                return null;
+
+            Type t = obj.GetType();
+            FieldInfo f = t.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (f != null)
+                return f.GetValue(obj);
+
+            PropertyInfo p = t.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (p != null && p.CanRead)
+                return p.GetValue(obj, null);
+
+            return null;
+        }
+
+        private static bool TryGetFloatMember(object obj, string name, out float value)
+        {
+            value = 0f;
+            if (obj == null)
+                return false;
+
+            Type t = obj.GetType();
+            FieldInfo f = t.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (f != null && f.FieldType == typeof(float))
+            {
+                value = (float)f.GetValue(obj);
+                return true;
+            }
+
+            PropertyInfo p = t.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (p != null && p.CanRead && p.PropertyType == typeof(float))
+            {
+                value = (float)p.GetValue(obj, null);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TrySetFloatMember(object obj, string name, float value)
+        {
+            if (obj == null)
+                return false;
+
+            Type t = obj.GetType();
+            FieldInfo f = t.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (f != null && f.FieldType == typeof(float))
+            {
+                f.SetValue(obj, value);
+                return true;
+            }
+
+            PropertyInfo p = t.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (p != null && p.CanWrite && p.PropertyType == typeof(float))
+            {
+                p.SetValue(obj, value, null);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TrySetTColor(object tColor, Color value)
+        {
+            if (tColor == null)
+                return false;
+
+            bool r = TrySetFloatMember(tColor, "r", value.r);
+            bool g = TrySetFloatMember(tColor, "g", value.g);
+            bool b = TrySetFloatMember(tColor, "b", value.b);
+            bool a = TrySetFloatMember(tColor, "a", value.a);
+
+            return r && g && b && a;
+        }
+
+        private static Color GetPresetColor(SunColorPreset preset)
+        {
+            switch (preset)
+            {
+                case SunColorPreset.White:
+                    return new Color(1f, 1f, 1f, 1f);
+                case SunColorPreset.WarmYellow:
+                    return new Color(1f, 0.82f, 0.45f, 1f);
+                case SunColorPreset.Orange:
+                    return new Color(1f, 0.48f, 0.12f, 1f);
+                case SunColorPreset.Red:
+                    return new Color(1f, 0.15f, 0.08f, 1f);
+                case SunColorPreset.BlueWhite:
+                    return new Color(0.72f, 0.86f, 1f, 1f);
+                case SunColorPreset.Blue:
+                    return new Color(0.22f, 0.48f, 1f, 1f);
+                case SunColorPreset.Purple:
+                    return new Color(0.68f, 0.30f, 1f, 1f);
+                case SunColorPreset.Green:
+                    return new Color(0.28f, 1f, 0.38f, 1f);
+                default:
+                    return Color.white;
+            }
+        }
+
+        private static void ApplySunVisuals(TSector sector)
+        {
+            if (sector == null)
+                return;
+
+            object bg = GetMemberValue(sector, "bg");
+            if (bg == null)
+                return;
+
+            object sun = GetMemberValue(bg, "sunColor");
+            if (sun == null)
+                return;
+
+            float originalSize;
+            if (TryGetFloatMember(sun, "sunSize", out originalSize))
+            {
+                originalSunSizeBySector[sector.Index] = originalSize;
+
+                if (overrideSunSize.Value)
+                    TrySetFloatMember(sun, "sunSize", RoundToHundredth(startSectorSunSize.Value));
+            }
+            else if (overrideSunSize.Value && !warnedSunSize)
+            {
+                warnedSunSize = true;
+                Log.LogWarning("Sun Visuals: could not find verified sunSize member; Sun Size override was not applied.");
+            }
+
+            if (sunColorPreset.Value != SunColorPreset.Vanilla)
+            {
+                if (!TrySetTColor(sun, GetPresetColor(sunColorPreset.Value)) && !warnedSunColor)
+                {
+                    warnedSunColor = true;
+                    Log.LogWarning("Sun Visuals: verified TColor r/g/b/a fields could not all be written; color override was not applied.");
+                }
+            }
+        }
+
+        private static float GetMineralRichnessValue(MineralRichness value)
+        {
+            switch (value)
+            {
+                case MineralRichness.Poor:
+                    return 0.35f;
+
+                case MineralRichness.Medium:
+                    return 0.50f;
+
+                case MineralRichness.Rich:
+                    return 0.70f;
+
+                case MineralRichness.VeryRich:
+                    return 1.00f;
+
+                case MineralRichness.VeryPoor:
+                default:
+                    return 0.20f;
+            }
+        }
+
+        [HarmonyPatch(typeof(TSector), "GenerateExtraSectorData")]
         [HarmonyPrefix]
-        public static void PreFix_TSector_GenerateSectorData(TSector __instance, int mode)
+        public static void Prefix_TSector_GenerateExtraSectorData(TSector __instance, int mode)
         {
             if (!pluginEnabled.Value)
-            {
-                return; // Skip if the plugin is disabled
-            }
+                return;
 
-            if (mode == 1) // Assuming mode 1 is the start sector
-            {
-                logger.LogInfo($"Start sector set to {__instance.Index}");
-                logger.LogInfo($"Initial start sector size set to {__instance.size}");
-                logger.LogInfo($"Initial start sector richness set to {__instance.mineralLevel}");
-                logger.LogInfo($"Initial start sector big asteroid {__instance.bigAsteroidDensity}");
-                logger.LogInfo($"Initial start sector type {__instance.type.ToString()}");
+            // Preserve the proven start-sector generation condition from v3.1.
+            if (mode != 1)
+                return;
 
-                __instance.SetSectorSize((int)startSectorSize.Value);
-                logger.LogInfo($"Start sector size changed to {__instance.size}");
-                __instance.mineralLevel = startSectorRichness.Value;
-                logger.Equals($"Start sector richness changed to {__instance.mineralLevel}");
-                __instance.bigAsteroidDensity = (int)startSectorBigAsteroidDensity.Value;
-                logger.LogInfo($"Start sector big asteroid density changed to {__instance.bigAsteroidDensity}");
-                __instance.type = (global::SectorType)startSectorType.Value;
-                logger.LogInfo($"Start sector type changed to {__instance.type.ToString()}");
+            __instance.SetSectorSize((int)startSectorSize.Value);
+            __instance.mineralLevel = GetMineralRichnessValue(mineralRichness.Value);
+            switch (bigAsteroidMode.Value)
+            {
+                case BigAsteroidMode.None:
+                    __instance.bigAsteroidDensity = -1;
+                    break;
+
+                case BigAsteroidMode.VeryDense:
+                    __instance.bigAsteroidDensity = 1;
+                    break;
+
+                case BigAsteroidMode.Maximum:
+                    // Reuse native VeryDense density so big-asteroid generation remains enabled.
+                    // Final quantity is then forced by the proven GetObjectsQuantity override below.
+                    __instance.bigAsteroidDensity = 1;
+                    break;
+
+                case BigAsteroidMode.VanillaRandom:
+                default:
+                    __instance.bigAsteroidDensity = 0;
+                    break;
             }
+            __instance.type = (global::SectorType)(int)startSectorType.Value;
         }
 
-        [HarmonyPatch(typeof(TSector), MethodType.Constructor)]
-        [HarmonyPatch(new Type[] { typeof(int), typeof(int), typeof(int), typeof(int), typeof(int) })]
+        [HarmonyPatch(typeof(TSector), "GenerateExtraSectorData")]
+        [HarmonyPostfix]
+        public static void PostFix_TSector_GenerateExtraSectorData_SunVisuals(TSector __instance, int mode)
+        {
+            if (!pluginEnabled.Value)
+                return;
+
+            if (mode != 1)
+                return;
+
+            ApplySunVisuals(__instance);
+        }
+
+        [HarmonyPatch(typeof(TSector), "GenerateExtraSectorData")]
+        [HarmonyPostfix]
+        public static void PostFix_TSector_GenerateExtraSectorData_Population(TSector __instance, int mode)
+        {
+            if (!pluginEnabled.Value)
+                return;
+
+            if (mode != 1 || __instance == null || !__instance.isStarterSector)
+                return;
+
+            // Starter-sector-only local population control.
+            // Does not modify Quadrant.sectorDensity.
+            __instance.population = (int)startingSectorPopulation.Value;
+        }
+
+        [HarmonyPatch(
+            typeof(TSector),
+            MethodType.Constructor,
+            new Type[]
+            {
+                typeof(int),
+                typeof(int),
+                typeof(int),
+                typeof(int),
+                typeof(int),
+                typeof(bool)
+            }
+        )]
         [HarmonyPostfix]
         public static void PostFix_TSector_Ctor(TSector __instance, int mode)
         {
-            if(!pluginEnabled.Value || !spawnTinheadWorkshop.Value)
+            if (!pluginEnabled.Value || !spawnTinheadWorkshop.Value)
+                return;
+
+            if (mode != 1)
+                return;
+
+            // Native faction index used by the proven working v3.1 Tinhead Workshop path.
+            if (__instance.HasStationOfFaction(6))
+                return;
+
+            Coordenates coords = __instance.GetMainCoords(true);
+
+            // Preserve the exact proven constructor argument pattern from v3.1.
+            new Workshop(
+                __instance.level,
+                coords,
+                6,
+                __instance.Index,
+                0,
+                -1
+            );
+        }
+
+        [HarmonyPatch(typeof(TSector), "GetObjectsQuantity")]
+        [HarmonyPostfix]
+        public static void PostFix_TSector_GetObjectsQuantity(
+            TSector __instance,
+            int objType,
+            ref int __result)
+        {
+            if (!pluginEnabled.Value)
+                return;
+
+            if (!__instance.isStarterSector)
+                return;
+
+            if (objType != 7)
+                return;
+
+            if (bigAsteroidMode.Value != BigAsteroidMode.Maximum)
+                return;
+
+            // Proven former SpawnMaxBigAsteroids behavior.
+            __result = __instance.sizeSqr + 3;
+        }
+
+        [HarmonyPatch(typeof(TSector), "get_SolarOutput")]
+        [HarmonyPostfix]
+        public static void PostFix_TSector_GetSolarOutput(
+            TSector __instance,
+            ref float __result)
+        {
+            if (!pluginEnabled.Value)
+                return;
+
+            if (__instance == null || !__instance.isStarterSector)
+                return;
+
+            // User decision: Pitch Black is always hard-locked to zero.
+            // Check the actual native sector type, not only the original return value.
+            if ((int)__instance.type == (int)global::SectorType.PitchBlack)
             {
+                __result = 0.0f;
                 return;
             }
 
-            logger.LogDebug($"PostFix_TSector_Ctor called with mode: {mode}");
-            logger.LogDebug($"Sector has workshop? {__instance.HasStationOfFaction(6)}");
-            if (!__instance.HasStationOfFaction(6) && mode == 1)
+            if (overrideSolarOutput.Value)
             {
-                var coord = __instance.GetMainCoords(true);
-                new Workshop(__instance.level, coord, 6, __instance.Index, 0, -1);
-                logger.LogInfo($"Creating workshop at {coord.AsVector2.ToString()} in sector {__instance.Index}");
-            }
-        }
-
-        [HarmonyPatch(typeof(TSector), nameof(TSector.GetObjectsQuantity))]
-        [HarmonyPostfix]
-        public static void PostFix_TSector_GetObjectsQuantity(TSector __instance, int objType, ref int __result)
-        {
-            if (!pluginEnabled.Value)
-            {
-                return; // Skip if the plugin is disabled
+                __result = ((int)startSectorSolarOutput.Value) / 100f;
+                return;
             }
 
-            // Check if this is the starting sector, objType is 7, and if SpawnMaxBigAsteroids is enabled
-            if (__instance.isStarterSector && objType == 7 && spawnMaxBigAsteroids.Value)
+            // Sun Size is visual-only. Preserve the original generated sunSize-derived
+            // solar output when only the visual size has been overridden.
+            if (overrideSunSize.Value)
             {
-                // Log the original result for debugging
-                logger.LogInfo($"TSector.GetObjectsQuantity() called for sector {__instance.Index} with objType {objType}, original result: {__result}");
-                // Force maximum big asteroid spawns when objType is 7 for the starting sector
-                __result = __instance.sizeSqr + 3;
-                logger.LogInfo($"SpawnMaxBigAsteroids enabled - forcing maximum big asteroid spawns for starting sector (index 1) with objType 7. New result: {__result} (based on sector size: {__instance.size})");
-                logger.LogInfo($"TSector.GetObjectsQuantity() final result: {__result}");
+                float originalValue;
+                if (originalSunSizeBySector.TryGetValue(__instance.Index, out originalValue))
+                    __result = originalValue;
             }
-
         }
     }
 }
